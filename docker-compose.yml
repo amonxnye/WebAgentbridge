@@ -1,5 +1,6 @@
 version: "3.9"
 
+# ── Infrastructure (always needed) ────────────────────────────────────────────
 services:
   postgres:
     image: postgres:16-alpine
@@ -30,6 +31,49 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+# ── Application (optional — for full containerised local dev) ─────────────────
+# Usage: docker-compose --profile app up
+#
+# For normal local development, skip these and run:
+#   npm run db:migrate:all
+#   npm run dev          (web server)
+#   npm run worker       (BullMQ worker, separate terminal)
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://webbridge:webbridge@postgres:5432/webbridge
+      REDIS_URL: redis://redis:6379
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://webbridge:webbridge@postgres:5432/webbridge
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:

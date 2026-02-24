@@ -1,0 +1,41 @@
+# Worker image — identical to the main image but starts the BullMQ worker
+# instead of the HTTP server.
+#
+# In Railway: create a second service, set Custom Start Command to:
+#   node dist/queue/worker.js
+# (or point this service at the same Docker image with that start command)
+
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+      libcups2 libdrm2 libdbus-1-3 libxcb1 libxkbcommon0 \
+      libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
+      libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
+      libglib2.0-0 libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
+
+RUN npx playwright install chromium
+
+RUN groupadd -r webbridge && useradd -r -g webbridge webbridge
+RUN chown -R webbridge:webbridge /app
+USER webbridge
+
+ENV NODE_ENV=production
+
+CMD ["node", "dist/queue/worker.js"]
