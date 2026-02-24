@@ -21,6 +21,8 @@ function mapSite(row: Record<string, unknown>): Site {
     respectRobotsTxt: row.respect_robots_txt as boolean,
     lastCrawled: row.last_crawled ? new Date(row.last_crawled as string) : null,
     isPublic: row.is_public as boolean,
+    domainVerified: (row.domain_verified as boolean | undefined) ?? false,
+    verifiedAt: row.verified_at ? new Date(row.verified_at as string) : null,
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),
   };
@@ -113,13 +115,24 @@ export async function getAllPublicSites(): Promise<Site[]> {
 }
 
 export async function searchPublicSites(q: string): Promise<Site[]> {
+  // Uses pg_trgm similarity for fuzzy matching (installed in migration 005).
+  // Falls back to ILIKE if the extension is not yet available.
   const rows = await query(
-    `SELECT * FROM sites
+    `SELECT *, GREATEST(
+       similarity(name, $1),
+       similarity(description, $1)
+     ) AS _score
+     FROM sites
      WHERE is_public = true AND status = 'ready'
-       AND (name ILIKE $1 OR description ILIKE $1)
-     ORDER BY created_at DESC
+       AND (
+         similarity(name, $1) > 0.1 OR
+         similarity(description, $1) > 0.1 OR
+         name ILIKE $2 OR
+         description ILIKE $2
+       )
+     ORDER BY _score DESC, created_at DESC
      LIMIT 50`,
-    [`%${q}%`]
+    [q, `%${q}%`]
   );
   return rows.map(mapSite);
 }
@@ -380,7 +393,7 @@ export async function deleteSite(siteId: string): Promise<void> {
 
 // ─── Consumer keys (Phase 2) ──────────────────────────────────────────────────
 
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, randomUUID } from 'crypto';
 
 export async function createConsumerKey(
   siteId: string,
@@ -674,6 +687,44 @@ export async function getAuditLogs(filters: {
     ipAddress: r.ip_address as string | null,
     createdAt: new Date(r.created_at as string),
   }));
+}
+
+// ─── Domain verification (FR-060) ────────────────────────────────────────────
+
+export async function setVerificationToken(siteId: string): Promise<string> {
+  const token = `webbridge-verify-${randomUUID()}`;
+  await query(
+    'UPDATE sites SET verification_token = $1, updated_at = NOW() WHERE id = $2',
+    [token, siteId]
+  );
+  return token;
+}
+
+export async function markSiteVerified(siteId: string): Promise<void> {
+  await query(
+    'UPDATE sites SET domain_verified = true, verified_at = NOW(), updated_at = NOW() WHERE id = $1',
+    [siteId]
+  );
+}
+
+export async function getSiteVerificationToken(siteId: string): Promise<string | null> {
+  const row = await queryOne(
+    'SELECT verification_token FROM sites WHERE id = $1',
+    [siteId]
+  );
+  return row ? (row.verification_token as string | null) : null;
+}
+
+// ─── Raw content cleanup (FR-064) ─────────────────────────────────────────────
+
+export async function clearRawContent(siteId: string): Promise<number> {
+  const rows = await query(
+    `UPDATE crawled_pages SET raw_text = NULL
+     WHERE site_id = $1 AND raw_text IS NOT NULL
+     RETURNING id`,
+    [siteId]
+  );
+  return rows.length;
 }
 
 // ─── Request logging ──────────────────────────────────────────────────────────

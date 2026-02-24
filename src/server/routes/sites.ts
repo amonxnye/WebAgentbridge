@@ -4,7 +4,7 @@ import {
   createSite, getSiteBySlug, getSitesSummary, updateSiteStatus,
   updateSiteRecrawl, updateSiteLastCrawlError, deleteSite,
   getPagesBySite, getEntitiesBySite, getActionsBySite, getGeneratedSpec,
-  writeAuditLog,
+  writeAuditLog, setVerificationToken, markSiteVerified, getSiteVerificationToken,
 } from '../../db/queries';
 import { enqueueCrawl } from '../../queue/jobs';
 import { requireApiKey } from '../middleware/auth';
@@ -188,6 +188,105 @@ router.post('/:slug/recrawl', requireApiKey, attachJwt, async (req, res) => {
   });
 
   return res.json({ ok: true, jobId, message: `Re-crawl enqueued for "${slug}".` });
+});
+
+// ── POST /api/sites/:slug/verify/initiate ─────────────────────────────────────
+// Generates a domain ownership verification token (FR-060).
+// The site owner must place the token at:
+//   https://{domain}/.well-known/webbridge-verify.txt
+// Then call POST /api/sites/:slug/verify/check to confirm.
+router.post('/:slug/verify/initiate', requireApiKey, async (req, res) => {
+  const { slug } = req.params;
+  const site = await getSiteBySlug(slug).catch(() => null);
+  if (!site) return res.status(404).json({ error_code: 'NOT_FOUND', message: `Site "${slug}" not found.`, retryable: false });
+
+  if (site.domainVerified) {
+    return res.json({ ok: true, alreadyVerified: true, message: 'Domain already verified.' });
+  }
+
+  const token = await setVerificationToken(site.id);
+  const domain = new URL(site.url).hostname;
+
+  return res.json({
+    ok: true,
+    token,
+    instructions: {
+      file_method: {
+        description: 'Create a text file at the path below containing exactly the token string.',
+        path: `/.well-known/webbridge-verify.txt`,
+        url: `https://${domain}/.well-known/webbridge-verify.txt`,
+        content: token,
+      },
+      dns_method: {
+        description: 'Add a DNS TXT record to your domain.',
+        record_type: 'TXT',
+        record_name: `_webbridge.${domain}`,
+        record_value: token,
+      },
+      next_step: `POST /api/sites/${slug}/verify/check`,
+    },
+  });
+});
+
+// ── POST /api/sites/:slug/verify/check ────────────────────────────────────────
+// Verifies domain ownership by checking the .well-known file.
+router.post('/:slug/verify/check', requireApiKey, async (req, res) => {
+  const { slug } = req.params;
+  const site = await getSiteBySlug(slug).catch(() => null);
+  if (!site) return res.status(404).json({ error_code: 'NOT_FOUND', message: `Site "${slug}" not found.`, retryable: false });
+
+  if (site.domainVerified) {
+    return res.json({ ok: true, verified: true, message: 'Domain already verified.' });
+  }
+
+  const token = await getSiteVerificationToken(site.id);
+  if (!token) {
+    return res.status(400).json({
+      error_code: 'VERIFICATION_NOT_INITIATED',
+      message: 'Call POST /verify/initiate first to generate a token.',
+      retryable: false,
+    });
+  }
+
+  // Try file-based verification
+  const domain = new URL(site.url).hostname;
+  const verifyUrl = `https://${domain}/.well-known/webbridge-verify.txt`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(verifyUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (response.ok) {
+      const body = (await response.text()).trim();
+      if (body === token) {
+        await markSiteVerified(site.id);
+        await writeAuditLog({
+          action: 'DOMAIN_VERIFIED',
+          resourceType: 'site',
+          resourceId: site.id,
+          siteId: site.id,
+          userId: req.jwtUser?.sub,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+        return res.json({ ok: true, verified: true, message: 'Domain ownership verified successfully.' });
+      }
+    }
+
+    return res.status(422).json({
+      error_code: 'VERIFICATION_FAILED',
+      message: `Token not found at ${verifyUrl}. Ensure the file exists and contains exactly: ${token}`,
+      retryable: true,
+    });
+  } catch (err) {
+    return res.status(422).json({
+      error_code: 'VERIFICATION_UNREACHABLE',
+      message: `Could not reach ${verifyUrl}: ${(err as Error).message}`,
+      retryable: true,
+    });
+  }
 });
 
 export default router;

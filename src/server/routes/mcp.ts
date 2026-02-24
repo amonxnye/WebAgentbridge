@@ -10,6 +10,7 @@ import {
   logRequest,
 } from '../../db/queries';
 import { requireApiKey } from '../middleware/auth';
+import { generateLlmsTxt } from '../../generator/llms-txt';
 import type { JsonRpcRequest, JsonRpcResponse, MCPManifest, CrawledPage, Entity } from '../../types';
 
 const router = Router({ mergeParams: true });
@@ -113,8 +114,18 @@ async function handleToolsCall(
       pages = pages.filter((p) => p.pageType === args.page_type);
     }
     const limit = Math.min(Number(args.limit ?? 20), 100);
-    const offset = Number(args.offset ?? 0);
-    const slice = pages.slice(offset, offset + limit);
+
+    // Cursor-based pagination (FR-065): cursor is the URL of the last item seen.
+    // Falls back to offset if no cursor provided.
+    let startIdx = Number(args.offset ?? 0);
+    if (args.cursor) {
+      const cursorIdx = pages.findIndex((p) => p.url === String(args.cursor));
+      startIdx = cursorIdx >= 0 ? cursorIdx + 1 : 0;
+    }
+    const slice = pages.slice(startIdx, startIdx + limit);
+    const nextCursor = slice.length === limit && startIdx + limit < pages.length
+      ? slice[slice.length - 1].url
+      : null;
 
     return rpcOk(id, {
       content: [{
@@ -129,7 +140,8 @@ async function handleToolsCall(
           })),
           total: pages.length,
           limit,
-          offset,
+          cursor: args.cursor ?? null,
+          next_cursor: nextCursor,
         }, null, 2),
       }],
     });
@@ -164,8 +176,17 @@ async function handleToolsCall(
     const matching = entities.filter((e) => e.entityType === entityType);
 
     const limit = Math.min(Number(args.limit ?? 20), 100);
-    const offset = Number(args.offset ?? 0);
-    const slice = matching.slice(offset, offset + limit);
+
+    // Cursor-based pagination (FR-065): cursor is the entity name.
+    let startIdx = Number(args.offset ?? 0);
+    if (args.cursor) {
+      const cursorIdx = matching.findIndex((e) => e.id === String(args.cursor));
+      startIdx = cursorIdx >= 0 ? cursorIdx + 1 : 0;
+    }
+    const slice = matching.slice(startIdx, startIdx + limit);
+    const nextCursor = slice.length === limit && startIdx + limit < matching.length
+      ? slice[slice.length - 1].id
+      : null;
 
     return rpcOk(id, {
       content: [{
@@ -173,6 +194,7 @@ async function handleToolsCall(
         text: JSON.stringify({
           entity_type: entityType,
           items: slice.map((e) => ({
+            id: e.id,
             name: e.name,
             description: e.description,
             fields: e.fields,
@@ -180,7 +202,8 @@ async function handleToolsCall(
           })),
           total: matching.length,
           limit,
-          offset,
+          cursor: args.cursor ?? null,
+          next_cursor: nextCursor,
         }, null, 2),
       }],
     });
@@ -417,6 +440,32 @@ router.get('/mcp', requireApiKey, async (req, res) => {
     mcp_endpoint: `${BASE_URL}/sites/${slug}/mcp`,
     manifest: spec.mcpManifest,
   });
+});
+
+// GET /sites/:slug/llms.txt — LLM-readable plain-text site summary (SRS 3.6)
+// Follows the emerging llms.txt convention: https://llmstxt.org
+// Public endpoint — no API key required (intended for LLM crawlers).
+router.get('/llms.txt', async (req, res) => {
+  const { slug } = req.params as { slug: string };
+  const site = await getSiteBySlug(slug).catch(() => null);
+  if (!site) {
+    return res.status(404).type('text/plain').send(`Site "${slug}" not found.`);
+  }
+  if (site.status !== 'ready') {
+    return res.status(503).type('text/plain').send(`Site "${slug}" is not yet ready. Status: ${site.status}`);
+  }
+
+  const [pages, entities, actions] = await Promise.all([
+    getPagesBySite(site.id),
+    getEntitiesBySite(site.id),
+    getActionsBySite(site.id),
+  ]);
+
+  const text = generateLlmsTxt(site, pages, entities, actions, BASE_URL);
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('X-WebBridge-Last-Crawled', site.lastCrawled?.toISOString() ?? '');
+  return res.send(text);
 });
 
 export default router;

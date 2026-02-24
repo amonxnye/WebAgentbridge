@@ -62,6 +62,8 @@ export interface Site {
   respectRobotsTxt: boolean;
   lastCrawled: Date | null;
   isPublic: boolean;
+  domainVerified: boolean;
+  verifiedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -11,6 +11,7 @@ const MIGRATIONS = [
   join(__dirname, 'migrations', '002_phase2.sql'),
   join(__dirname, 'migrations', '003_phase3.sql'),
   join(__dirname, 'migrations', '004_phase4.sql'),
+  join(__dirname, 'migrations', '005_verification_search.sql'),
 ];
 
 async function migrateAll(): Promise<void> {

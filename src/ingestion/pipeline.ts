@@ -18,6 +18,7 @@ import {
   getActionsBySite,
   saveGeneratedSpec,
   writeAuditLog,
+  clearRawContent,
 } from '../db/queries';
 import type { Site } from '../types';
 
@@ -115,6 +116,16 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
 
     await saveGeneratedSpec({ siteId, openapiSpec, mcpManifest, agentJson });
     await updateSiteStatus(siteId, 'ready', new Date());
+
+    // FR-064: Purge raw crawl content now that the semantic model is complete.
+    // Raw HTML/text is only needed during ingestion; the generated spec is the
+    // retained artefact. Set PURGE_RAW_CONTENT=false to disable (e.g. for debugging).
+    if (process.env.PURGE_RAW_CONTENT !== 'false') {
+      const purged = await clearRawContent(siteId).catch(() => 0);
+      if (purged > 0) {
+        console.log(`[Pipeline] Purged raw_text from ${purged} pages (FR-064 compliance).`);
+      }
+    }
 
     const durationMs = Date.now() - startedAt;
     console.log(

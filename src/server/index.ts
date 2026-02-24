@@ -105,6 +105,8 @@ export async function startServer(): Promise<void> {
     console.log(`  Site MCP:    POST ${base}/sites/{slug}/mcp`);
     console.log(`  Manifest:    GET  ${base}/sites/{slug}/agent.json`);
     console.log(`  OpenAPI:     GET  ${base}/sites/{slug}/openapi.json`);
+    console.log(`  LLMs.txt:    GET  ${base}/sites/{slug}/llms.txt`);
+    console.log(`  Verify:      POST ${base}/api/sites/{slug}/verify/initiate`);
     console.log(`  Mgmt API:    GET  ${base}/api/sites`);
     console.log(`  Health:      GET  ${base}/health\n`);
   });
