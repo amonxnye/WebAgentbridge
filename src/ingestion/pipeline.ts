@@ -1,11 +1,14 @@
 import { WebCrawler } from '../crawler';
 import { SemanticClassifier } from '../semantic/classifier';
+import { authenticateSite } from '../auth/site-auth';
+import { dispatch } from '../webhooks/dispatcher';
 import { generateOpenAPI } from '../generator/openapi';
 import { generateMCPManifest } from '../generator/mcp-manifest';
 import { generateAgentJson } from '../generator/agent-json';
 import {
   getSiteById,
   updateSiteStatus,
+  updateSiteLastCrawlError,
   upsertPage,
   updatePageClassification,
   saveEntities,
@@ -14,6 +17,7 @@ import {
   getEntitiesBySite,
   getActionsBySite,
   saveGeneratedSpec,
+  writeAuditLog,
 } from '../db/queries';
 import type { Site } from '../types';
 
@@ -33,6 +37,10 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
 
   console.log(`\n[Pipeline] Starting ingestion for "${site.name}" (${site.url})`);
   await updateSiteStatus(siteId, 'crawling');
+  await updateSiteLastCrawlError(siteId, null);
+
+  await dispatch(siteId, 'crawl.started', { site_url: site.url });
+  await writeAuditLog({ action: 'CRAWL_STARTED', resourceType: 'site', resourceId: siteId, siteId });
 
   const crawler = new WebCrawler();
   const classifier = new SemanticClassifier();
@@ -44,16 +52,19 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
   try {
     await crawler.init();
 
+    // Authenticate with the site if credentials are configured
+    const authCtx = await authenticateSite(site, crawler.getBrowser());
+
     await crawler.crawl({
       site,
+      extraHTTPHeaders: authCtx.headers,
+      storageState: authCtx.storageState,
       onPage: async (rawPage) => {
         // 1. Persist the page (with placeholder pageType)
         const page = await upsertPage(rawPage);
 
         // 2. Classify with Claude
         console.log(`[Pipeline] Classifying: ${rawPage.url}`);
-
-        // Re-use the page content that was already extracted during crawl
         const classification = await classifier.classify(rawPage.url, {
           title: rawPage.title,
           textContent: rawPage.rawText,
@@ -68,11 +79,7 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
         // 4. Persist entities
         if (classification.entities.length > 0) {
           await saveEntities(
-            classification.entities.map((e) => ({
-              ...e,
-              siteId,
-              pageId: page.id,
-            }))
+            classification.entities.map((e) => ({ ...e, siteId, pageId: page.id }))
           );
           entitiesFound += classification.entities.length;
         }
@@ -80,11 +87,7 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
         // 5. Persist actions
         if (classification.actions.length > 0) {
           await saveActions(
-            classification.actions.map((a) => ({
-              ...a,
-              siteId,
-              pageId: page.id,
-            }))
+            classification.actions.map((a) => ({ ...a, siteId, pageId: page.id }))
           );
           actionsFound += classification.actions.length;
         }
@@ -105,9 +108,7 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
       getActionsBySite(siteId),
     ]);
 
-    // Refresh site to get updated lastCrawled
     const updatedSite: Site = { ...site, lastCrawled: new Date() };
-
     const openapiSpec = generateOpenAPI(updatedSite, pages, entities, actions);
     const mcpManifest = generateMCPManifest(updatedSite, pages, entities, actions);
     const agentJson = generateAgentJson(updatedSite, entities, actions);
@@ -121,10 +122,34 @@ export async function runIngestion(siteId: string): Promise<IngestionResult> {
       `${pagesProcessed} pages, ${entitiesFound} entities, ${actionsFound} actions`
     );
 
+    await dispatch(siteId, 'crawl.completed', {
+      pages_processed: pagesProcessed,
+      entities_found: entitiesFound,
+      actions_found: actionsFound,
+      duration_ms: durationMs,
+    });
+    await writeAuditLog({
+      action: 'CRAWL_COMPLETED',
+      resourceType: 'site',
+      resourceId: siteId,
+      siteId,
+      newValues: { pagesProcessed, entitiesFound, actionsFound, durationMs },
+    });
+
     return { siteId, pagesProcessed, entitiesFound, actionsFound, durationMs };
   } catch (err) {
-    console.error('[Pipeline] Ingestion failed:', err instanceof Error ? err.message : err);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('[Pipeline] Ingestion failed:', errorMsg);
     await updateSiteStatus(siteId, 'failed');
+    await updateSiteLastCrawlError(siteId, errorMsg);
+    await dispatch(siteId, 'crawl.failed', { error: errorMsg }).catch(() => {});
+    await writeAuditLog({
+      action: 'CRAWL_FAILED',
+      resourceType: 'site',
+      resourceId: siteId,
+      siteId,
+      newValues: { error: errorMsg },
+    });
     throw err;
   } finally {
     await crawler.close();

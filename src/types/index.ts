@@ -55,6 +55,7 @@ export interface Site {
   description: string;
   status: SiteStatus;
   authType: AuthType;
+  authCredentials: Record<string, unknown> | null;
   crawlDepth: number;
   allowedPaths: string[] | null;
   excludedPaths: string[] | null;

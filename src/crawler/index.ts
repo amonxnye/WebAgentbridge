@@ -1,4 +1,4 @@
-import { chromium, Browser } from 'playwright';
+import { chromium, Browser, BrowserContextOptions } from 'playwright';
 import { extractPageContent } from './extractor';
 import type { Site, CrawledPage } from '../types';
 
@@ -8,7 +8,13 @@ const PAGE_TIMEOUT_MS = parseInt(process.env.CRAWL_PAGE_TIMEOUT_MS ?? '30000', 1
 export interface CrawlJob {
   site: Site;
   onPage: (page: Omit<CrawledPage, 'id'>) => Promise<void>;
+  /** Extra HTTP headers to send on every request (e.g. API key auth). */
+  extraHTTPHeaders?: Record<string, string>;
+  /** Serialised Playwright storage state JSON (session cookies from login-form auth). */
+  storageState?: string;
 }
+
+export { Browser };
 
 export class WebCrawler {
   private browser: Browser | null = null;
@@ -20,6 +26,11 @@ export class WebCrawler {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
     console.log('[Crawler] Browser launched.');
+  }
+
+  getBrowser(): Browser {
+    if (!this.browser) throw new Error('Crawler not initialised — call init() first.');
+    return this.browser;
   }
 
   async close(): Promise<void> {
@@ -54,9 +65,15 @@ export class WebCrawler {
       this.visitedUrls.add(item.url);
       console.log(`[Crawler] Fetching [depth=${item.depth}] ${item.url}`);
 
-      const context = await this.browser.newContext({
+      const contextOptions: BrowserContextOptions = {
         userAgent: 'WebBridge-Crawler/1.0 (https://webbridge.io/bot)',
-      });
+        ...(job.extraHTTPHeaders ? { extraHTTPHeaders: job.extraHTTPHeaders } : {}),
+      };
+      // Apply login-form session cookies if provided
+      if (job.storageState) {
+        (contextOptions as Record<string, unknown>).storageState = JSON.parse(job.storageState);
+      }
+      const context = await this.browser.newContext(contextOptions);
       const page = await context.newPage();
 
       try {
