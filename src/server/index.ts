@@ -1,5 +1,6 @@
 import express from 'express';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import dotenv from 'dotenv';
 
 import mcpRouter from './routes/mcp';
@@ -25,10 +26,20 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 
 // ── Global middleware ─────────────────────────────────────────────────────────
 app.use(express.json({ limit: '2mb' }));
-app.use(attachJwt);                              // attach JWT user from Bearer token if present
+app.use(attachJwt);
 
-// ── Dashboard (static SPA) ────────────────────────────────────────────────────
-app.use(express.static(join(__dirname, '..', '..', 'public')));
+// ── Dashboard (static SPA) — path-resilient for local dev, dist/, and Vercel ──
+// Resolve from multiple candidate locations so it works regardless of
+// where __dirname lands (ts-node src/, compiled dist/server/, Vercel sandbox).
+const candidates = [
+  join(__dirname, '..', '..', 'public'),   // ts-node: src/server/ → project root
+  join(__dirname, '..', 'public'),          // dist/server/ → dist/../public
+  join(process.cwd(), 'public'),            // Vercel / arbitrary CWD
+];
+const publicDir = candidates.find(existsSync);
+if (publicDir) {
+  app.use(express.static(publicDir));
+}
 
 // ── Health + Prometheus metrics ───────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -46,15 +57,26 @@ app.use('/registry', registryRouter);
 app.use('/marketplace', marketplaceRouter);
 
 // ── Management API (/api/*) ───────────────────────────────────────────────────
+// Sub-routes must be mounted before the parent to avoid slug capture
 app.use('/api/sites/:slug/keys',      keysRouter);
 app.use('/api/sites/:slug/analytics', analyticsRouter);
 app.use('/api/sites/:slug/webhooks',  webhooksRouter);
 app.use('/api/sites',                 sitesRouter);
-app.use('/api/analytics',             analyticsRouter);   // global analytics
+app.use('/api/analytics',             analyticsRouter);
 app.use('/api/audit',                 auditRouter);
 
 // ── Per-site MCP + discovery endpoints (with rate limiting) ───────────────────
 app.use('/sites/:slug', rateLimitMcp, mcpRouter);
+
+// ── Dashboard fallback: serve index.html for unknown GET routes ───────────────
+// Allows browser history navigation without 404s
+app.get('*', (_req, res, next) => {
+  if (publicDir) {
+    const idx = join(publicDir, 'index.html');
+    if (existsSync(idx)) { res.sendFile(idx); return; }
+  }
+  next();
+});
 
 // ── 404 fallback ──────────────────────────────────────────────────────────────
 app.use((_req, res) => {
