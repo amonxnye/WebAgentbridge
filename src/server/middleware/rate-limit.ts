@@ -50,8 +50,14 @@ export function rateLimitMcp(req: Request, res: Response, next: NextFunction): v
       }
       next();
     })
-    .catch(() => {
-      // If Redis is unavailable, fail open (don't block traffic)
-      next();
+    .catch((err: Error) => {
+      // Fail closed — reject requests when the rate-limit store is unavailable.
+      // Failing open would allow unlimited requests during Redis outages.
+      console.error('[RateLimit] Redis error, failing closed:', err.message);
+      res.status(503).json({
+        error_code: 'SERVICE_UNAVAILABLE',
+        message: 'Rate limiting service temporarily unavailable. Please retry shortly.',
+        retryable: true,
+      });
     });
 }

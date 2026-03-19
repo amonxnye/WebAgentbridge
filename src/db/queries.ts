@@ -439,6 +439,17 @@ export async function getConsumerKeyByHash(keyHash: string): Promise<{
   return { id: row.id as string, siteId: row.site_id as string, isActive: row.is_active as boolean };
 }
 
+export async function getConsumerKeyById(keyId: string): Promise<{
+  id: string; siteId: string; isActive: boolean;
+} | null> {
+  const row = await queryOne(
+    'SELECT id, site_id, is_active FROM consumer_keys WHERE id = $1',
+    [keyId]
+  );
+  if (!row) return null;
+  return { id: row.id as string, siteId: row.site_id as string, isActive: row.is_active as boolean };
+}
+
 export async function revokeConsumerKey(keyId: string): Promise<void> {
   await query(
     'UPDATE consumer_keys SET is_active = false WHERE id = $1',
@@ -549,6 +560,22 @@ export async function getWebhooksBySite(siteId: string): Promise<Array<{
     lastTriggered: r.last_triggered ? new Date(r.last_triggered as string) : null,
     createdAt: new Date(r.created_at as string),
   }));
+}
+
+export async function getWebhookById(webhookId: string): Promise<{
+  id: string; siteId: string | null; url: string; isActive: boolean;
+} | null> {
+  const row = await queryOne(
+    'SELECT id, site_id, url, is_active FROM webhooks WHERE id = $1',
+    [webhookId]
+  );
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    siteId: row.site_id as string | null,
+    url: row.url as string,
+    isActive: row.is_active as boolean,
+  };
 }
 
 export async function deleteWebhook(webhookId: string): Promise<void> {
@@ -669,11 +696,15 @@ export async function getAuditLogs(filters: {
   const limit = filters.limit ?? 50;
   const offset = filters.offset ?? 0;
 
+  // Parameterize LIMIT and OFFSET to prevent SQL injection
+  params.push(limit);   const limitIdx  = i++;
+  params.push(offset);  const offsetIdx = i++;
+
   const rows = await query(
     `SELECT id, action, resource_type, resource_id, site_id, user_id, ip_address, created_at
      FROM audit_logs ${where}
      ORDER BY created_at DESC
-     LIMIT ${limit} OFFSET ${offset}`,
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     params
   );
 

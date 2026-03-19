@@ -80,6 +80,9 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 export function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-  const secret = process.env.JWT_SECRET ?? 'insecure-dev-secret';
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable must be set before signing tokens');
+  }
   return jwt.sign(payload, secret, { expiresIn: '24h' });
 }

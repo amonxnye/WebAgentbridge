@@ -33,17 +33,25 @@ async function checkAndEnqueue(): Promise<void> {
 
   for (const site of sites) {
     try {
-      await enqueueCrawl({ siteId: site.id, siteSlug: site.slug, siteUrl: site.url });
-
-      // Advance next_crawl_at
-      await query(
+      // Atomic UPDATE with the same time-fence used in the SELECT to prevent
+      // duplicate scheduling when multiple scheduler instances run concurrently.
+      // Only the instance that wins this race will proceed to enqueue.
+      const updated = await query(
         `UPDATE sites
          SET next_crawl_at = NOW() + (recrawl_interval_hours || ' hours')::interval,
              updated_at    = NOW()
-         WHERE id = $1`,
+         WHERE id = $1
+           AND (next_crawl_at IS NULL OR next_crawl_at <= NOW())`,
         [site.id]
-      );
+      ) as unknown as { rowCount: number };
 
+      if (!updated || updated.rowCount === 0) {
+        // Another scheduler instance already claimed this site
+        console.log(`[Scheduler] Skipping ${site.slug} — already claimed by another instance`);
+        continue;
+      }
+
+      await enqueueCrawl({ siteId: site.id, siteSlug: site.slug, siteUrl: site.url });
       console.log(`[Scheduler] Enqueued re-crawl for ${site.slug} (every ${site.recrawl_interval_hours}h)`);
     } catch (err) {
       console.warn(`[Scheduler] Failed to enqueue ${site.slug}:`, (err as Error).message);

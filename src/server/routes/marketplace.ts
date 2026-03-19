@@ -57,9 +57,17 @@ router.get('/', async (req, res) => {
     params.push(category);
   }
 
-  const orderBy = sort === 'recent' ? 'last_crawled DESC NULLS LAST'
-    : sort === 'pages' ? 'page_count DESC'
-    : 'star_count DESC, last_crawled DESC NULLS LAST';
+  // Whitelist-only ORDER BY — never interpolate user input directly
+  const ORDER_BY_MAP: Record<string, string> = {
+    recent: 'last_crawled DESC NULLS LAST',
+    pages:  'page_count DESC',
+    stars:  'star_count DESC, last_crawled DESC NULLS LAST',
+  };
+  const orderBy = ORDER_BY_MAP[sort] ?? ORDER_BY_MAP.stars;
+
+  // Move limit/offset into the parameterized list to prevent SQL injection
+  params.push(limit);   const limitIdx  = i++;
+  params.push(offset);  const offsetIdx = i++;
 
   try {
     const rows = await query(
@@ -71,7 +79,7 @@ router.get('/', async (req, res) => {
        FROM sites s
        WHERE ${conditions.join(' AND ')}
        ORDER BY ${orderBy}
-       LIMIT ${limit} OFFSET ${offset}`,
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       params
     );
 
@@ -87,7 +95,8 @@ router.get('/', async (req, res) => {
       offset,
     });
   } catch (err) {
-    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: (err as Error).message, retryable: false });
+    console.error('[Marketplace]', err);
+    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: 'An internal error occurred.', retryable: false });
   }
 });
 

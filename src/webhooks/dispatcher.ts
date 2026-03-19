@@ -66,8 +66,12 @@ export async function dispatch(
     data,
   };
 
-  // Fire and forget — deliver each webhook concurrently
-  await Promise.allSettled(hooks.map((hook) => deliverWebhook(hook, payload)));
+  // Deliver each webhook concurrently and log aggregate failures
+  const results = await Promise.allSettled(hooks.map((hook) => deliverWebhook(hook, payload)));
+  const failCount = results.filter((r) => r.status === 'rejected').length;
+  if (failCount > 0) {
+    console.warn(`[Dispatcher] ${failCount}/${hooks.length} webhook(s) failed to deliver for event "${event}"`);
+  }
 }
 
 async function deliverWebhook(
@@ -117,6 +121,8 @@ async function deliverWebhook(
     const msg = err instanceof Error ? err.message : String(err);
     delivery.failed_at = new Date().toISOString();
     delivery.error_message = msg;
+    // Capture the error in response_body so it's visible in the delivery log
+    delivery.response_body = `Error: ${msg}`.slice(0, 500);
     console.warn(`[Webhook] ✗ ${payload.event} → ${hook.url}: ${msg}`);
   }
 

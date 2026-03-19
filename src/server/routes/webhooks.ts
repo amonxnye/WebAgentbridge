@@ -3,6 +3,7 @@ import {
   getSiteBySlug,
   createWebhook,
   getWebhooksBySite,
+  getWebhookById,
   deleteWebhook,
   getWebhookDeliveries,
   writeAuditLog,
@@ -74,6 +75,12 @@ router.delete('/:webhookId', requireApiKey, attachJwt, async (req, res) => {
   const site = await getSiteBySlug(slug).catch(() => null);
   if (!site) return res.status(404).json({ error_code: 'NOT_FOUND', message: `Site "${slug}" not found.`, retryable: false });
 
+  // Ownership check: verify the webhook belongs to this site (prevents IDOR)
+  const webhook = await getWebhookById(webhookId).catch(() => null);
+  if (!webhook || webhook.siteId !== site.id) {
+    return res.status(403).json({ error_code: 'FORBIDDEN', message: 'Webhook not found for this site.', retryable: false });
+  }
+
   await deleteWebhook(webhookId);
 
   await writeAuditLog({
@@ -90,7 +97,16 @@ router.delete('/:webhookId', requireApiKey, attachJwt, async (req, res) => {
 
 // GET /api/sites/:slug/webhooks/:webhookId/deliveries
 router.get('/:webhookId/deliveries', requireApiKey, async (req, res) => {
-  const { webhookId } = req.params;
+  const { slug, webhookId } = req.params;
+  const site = await getSiteBySlug(slug).catch(() => null);
+  if (!site) return res.status(404).json({ error_code: 'NOT_FOUND', message: `Site "${slug}" not found.`, retryable: false });
+
+  // Ownership check: verify the webhook belongs to this site (prevents IDOR)
+  const webhook = await getWebhookById(webhookId).catch(() => null);
+  if (!webhook || webhook.siteId !== site.id) {
+    return res.status(403).json({ error_code: 'FORBIDDEN', message: 'Webhook not found for this site.', retryable: false });
+  }
+
   const deliveries = await getWebhookDeliveries(webhookId);
   return res.json({ deliveries });
 });

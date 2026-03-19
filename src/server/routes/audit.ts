@@ -35,7 +35,8 @@ router.get('/', requireApiKey, async (req, res) => {
       total: logs.length,
     });
   } catch (err) {
-    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: (err as Error).message, retryable: false });
+    console.error('[Audit]', err);
+    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: 'An internal error occurred.', retryable: false });
   }
 });
 

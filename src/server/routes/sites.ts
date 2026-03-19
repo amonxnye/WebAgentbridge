@@ -27,7 +27,8 @@ router.get('/', requireApiKey, async (_req, res) => {
       total: sites.length,
     });
   } catch (err) {
-    res.status(500).json({ error_code: 'INTERNAL_ERROR', message: (err as Error).message, retryable: false });
+    console.error('[Sites]', err);
+    res.status(500).json({ error_code: 'INTERNAL_ERROR', message: 'An internal error occurred.', retryable: false });
   }
 });
 
@@ -43,6 +44,10 @@ router.post('/', requireApiKey, attachJwt, async (req, res) => {
   };
 
   if (!url) return res.status(400).json({ error_code: 'VALIDATION_ERROR', message: 'url is required', retryable: false });
+
+  if (crawlDepth !== undefined && (!Number.isInteger(crawlDepth) || crawlDepth < 0)) {
+    return res.status(400).json({ error_code: 'VALIDATION_ERROR', message: 'crawlDepth must be a non-negative integer', retryable: false });
+  }
 
   let parsed: URL;
   try { parsed = new URL(url); } catch {
@@ -84,7 +89,8 @@ router.post('/', requireApiKey, attachJwt, async (req, res) => {
       agent_json_url: `${BASE_URL}/sites/${slug}/agent.json`,
     });
   } catch (err) {
-    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: (err as Error).message, retryable: false });
+    console.error('[Sites]', err);
+    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: 'An internal error occurred.', retryable: false });
   }
 });
 

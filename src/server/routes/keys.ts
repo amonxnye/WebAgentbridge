@@ -3,6 +3,7 @@ import {
   getSiteBySlug,
   createConsumerKey,
   getConsumerKeysBySite,
+  getConsumerKeyById,
   revokeConsumerKey,
   writeAuditLog,
 } from '../../db/queries';
@@ -64,6 +65,12 @@ router.delete('/:keyId', requireApiKey, attachJwt, async (req, res) => {
   const { slug, keyId } = req.params;
   const site = await getSiteBySlug(slug).catch(() => null);
   if (!site) return res.status(404).json({ error_code: 'NOT_FOUND', message: `Site "${slug}" not found.`, retryable: false });
+
+  // Ownership check: verify the key belongs to this site (prevents IDOR)
+  const key = await getConsumerKeyById(keyId).catch(() => null);
+  if (!key || key.siteId !== site.id) {
+    return res.status(403).json({ error_code: 'FORBIDDEN', message: 'Key not found for this site.', retryable: false });
+  }
 
   await revokeConsumerKey(keyId);
 

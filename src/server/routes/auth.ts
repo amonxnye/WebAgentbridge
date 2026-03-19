@@ -15,8 +15,18 @@ router.post('/register', async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error_code: 'VALIDATION_ERROR', message: 'email and password are required', retryable: false });
   }
-  if (password.length < 8) {
-    return res.status(400).json({ error_code: 'VALIDATION_ERROR', message: 'Password must be at least 8 characters', retryable: false });
+  if (
+    password.length < 12 ||
+    !/[A-Z]/.test(password) ||
+    !/[a-z]/.test(password) ||
+    !/[0-9]/.test(password) ||
+    !/[^A-Za-z0-9]/.test(password)
+  ) {
+    return res.status(400).json({
+      error_code: 'VALIDATION_ERROR',
+      message: 'Password must be at least 12 characters and include uppercase, lowercase, digit, and special character',
+      retryable: false,
+    });
   }
 
   const existing = await getUserByEmail(email).catch(() => null);
@@ -45,7 +55,8 @@ router.post('/register', async (req, res) => {
       user: { id: user.id, email: user.email, name: user.name },
     });
   } catch (err) {
-    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: (err as Error).message, retryable: false });
+    console.error('[Auth]', err);
+    return res.status(500).json({ error_code: 'INTERNAL_ERROR', message: 'An internal error occurred.', retryable: false });
   }
 });
 
