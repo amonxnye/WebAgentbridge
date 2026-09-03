@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebBridge — Agentic Web Interface Platform</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #21253a;
+      --border: #2d3250;
+      --accent: #6c7fff;
+      --accent-hover: #8a96ff;
+      --text: #e2e4f0;
+      --text-muted: #8b90a8;
+      --green: #3ecf8e;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --radius: 8px;
+      --font: 'Inter', system-ui, sans-serif;
+    }
+
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+
+    /* ── Sidebar ──────────────────────────────────────────────────── */
+    #sidebar {
+      width: 220px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; padding: 20px 0; position: fixed; height: 100vh;
+    }
+    .logo { padding: 0 20px 24px; font-size: 18px; font-weight: 700; color: var(--accent); }
+    .logo span { font-weight: 300; color: var(--text-muted); }
+    nav a {
+      display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+      color: var(--text-muted); text-decoration: none; font-size: 14px; border-radius: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    nav a:hover, nav a.active { background: var(--surface2); color: var(--text); }
+    nav a .icon { font-size: 16px; }
+
+    /* ── Main content ─────────────────────────────────────────────── */
+    #main { margin-left: 220px; flex: 1; padding: 32px; max-width: 1200px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
+    h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+    /* ── Cards ────────────────────────────────────────────────────── */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; }
+    .stat-card .value.green { color: var(--green); }
+    .stat-card .value.accent { color: var(--accent); }
+
+    /* ── Table ────────────────────────────────────────────────────── */
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface2); }
+
+    /* ── Badge ────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
+    }
+    .badge.ready   { background: rgba(62,207,142,.15); color: var(--green); }
+    .badge.crawling { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .badge.pending  { background: rgba(108,127,255,.15); color: var(--accent); }
+    .badge.failed   { background: rgba(248,113,113,.15); color: var(--red); }
+
+    /* ── Buttons ──────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+      border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;
+      border: none; transition: background 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+    .btn-danger { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+    .btn-danger:hover { background: rgba(248,113,113,.25); }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* ── Forms ────────────────────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+    input[type="text"], input[type="url"], input[type="email"], input[type="password"], input[type="number"], select {
+      width: 100%; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 14px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Modal ────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100;
+      display: flex; align-items: center; justify-content: center; display: none;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 28px; width: 520px; max-height: 80vh; overflow-y: auto; position: relative;
+    }
+    .modal h2 { margin-bottom: 20px; }
+    .modal-close {
+      position: absolute; top: 16px; right: 16px; background: none; border: none;
+      color: var(--text-muted); font-size: 20px; cursor: pointer;
+    }
+
+    /* ── Section ──────────────────────────────────────────────────── */
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* ── Copy box ─────────────────────────────────────────────────── */
+    .copy-box {
+      display: flex; align-items: center; gap: 8px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px;
+      font-size: 12px; color: var(--text-muted); font-family: monospace;
+    }
+    .copy-box span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Marketplace grid ─────────────────────────────────────────── */
+    .mkt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .mkt-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .mkt-card h3 { font-size: 15px; font-weight: 600; }
+    .mkt-card p { font-size: 13px; color: var(--text-muted); flex: 1; }
+    .mkt-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
+
+    /* ── Toast ────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; background: var(--surface2);
+      border: 1px solid var(--border); padding: 12px 20px; border-radius: 8px;
+      font-size: 13px; z-index: 200; opacity: 0; transition: opacity .3s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── Misc ─────────────────────────────────────────────────────── */
+    .flex { display: flex; }
+    .gap-2 { gap: 8px; }
+    .gap-3 { gap: 12px; }
+    .mb-4 { margin-bottom: 16px; }
+    .mb-6 { margin-bottom: 24px; }
+    .text-muted { color: var(--text-muted); font-size: 13px; }
+    .empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 14px; }
+    .tag { background: var(--surface2); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────────── -->
+<nav id="sidebar">
+  <div class="logo">Web<span>Bridge</span></div>
+  <a href="#" class="active" data-view="overview">   <span class="icon">🏠</span> Overview</a>
+  <a href="#" data-view="sites">                      <span class="icon">🌐</span> Sites</a>
+  <a href="#" data-view="marketplace">                <span class="icon">🛒</span> Marketplace</a>
+  <a href="#" data-view="analytics">                  <span class="icon">📊</span> Analytics</a>
+  <a href="#" data-view="audit">                      <span class="icon">📋</span> Audit Log</a>
+</nav>
+
+<!-- ── Main ─────────────────────────────────────────────────────────────────── -->
+<main id="main">
+
+  <!-- Overview -->
+  <section class="section active" id="view-overview">
+    <h1>Overview</h1>
+    <div class="stat-grid" id="stat-grid">
+      <div class="stat-card"><div class="label">Sites</div><div class="value accent" id="stat-sites">—</div></div>
+      <div class="stat-card"><div class="label">Pages Indexed</div><div class="value" id="stat-pages">—</div></div>
+      <div class="stat-card"><div class="label">Requests (7d)</div><div class="value" id="stat-requests">—</div></div>
+      <div class="stat-card"><div class="label">Success Rate</div><div class="value green" id="stat-success">—</div></div>
+    </div>
+
+    <div class="flex gap-2 mb-4">
+      <h2 style="flex:1;margin:0;line-height:32px;">Registered Sites</h2>
+      <button class="btn btn-primary" onclick="openRegisterModal()">+ Register Site</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Status</th><th>Pages</th><th>Entities</th><th>Last Crawl</th><th>Actions</th></tr></thead>
+        <tbody id="sites-table-body"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Sites detail -->
+  <section class="section" id="view-sites">
+    <div class="flex gap-2 mb-6" style="align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="showView('overview')">← Back</button>
+      <h1 style="margin:0;" id="site-detail-title">Site</h1>
+      <span class="badge" id="site-detail-status"></span>
+    </div>
+
+    <div class="stat-grid" id="site-stat-grid" style="grid-template-columns:repeat(4,1fr)"></div>
+
+    <div class="flex gap-2 mb-4" style="margin-top:8px;">
+      <button class="btn btn-primary btn-sm" id="btn-recrawl" onclick="triggerRecrawl()">↺ Re-crawl</button>
+      <button class="btn btn-ghost btn-sm" id="btn-copy-mcp">Copy MCP endpoint</button>
+      <button class="btn btn-ghost btn-sm" id="btn-copy-agent">Copy agent.json URL</button>
+      <button class="btn btn-ghost btn-sm" onclick="showApiKeys()">🔑 API Keys</button>
+      <button class="btn btn-ghost btn-sm" onclick="showWebhooks()">🔔 Webhooks</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteSite()">Delete</button>
+    </div>
+
+    <h2>Pages</h2>
+    <div class="table-wrap mb-6">
+      <table>
+        <thead><tr><th>URL</th><th>Type</th><th>Summary</th><th>Crawled</th></tr></thead>
+        <tbody id="pages-table-body"></tbody>
+      </table>
+    </div>
+
+    <h2>Entity Types</h2>
+    <div id="entity-types" class="flex gap-2 mb-6" style="flex-wrap:wrap;"></div>
+
+    <h2>Re-crawl Schedule</h2>
+    <div class="flex gap-2 mb-6" style="align-items:center;">
+      <select id="recrawl-select" style="width:200px;">
+        <option value="">Manual only</option>
+        <option value="6">Every 6 hours</option>
+        <option value="12">Every 12 hours</option>
+        <option value="24">Daily</option>
+        <option value="168">Weekly</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="saveRecrawl()">Save</button>
+    </div>
+  </section>
+
+  <!-- Marketplace -->
+  <section class="section" id="view-marketplace">
+    <h1>Marketplace</h1>
+    <div class="flex gap-2 mb-4">
+      <input type="text" id="mkt-search" placeholder="Search sites…" style="width:300px;" oninput="searchMarketplace(this.value)">
+      <select id="mkt-sort" onchange="loadMarketplace()" style="width:160px;">
+        <option value="stars">Most starred</option>
+        <option value="recent">Most recent</option>
+        <option value="pages">Most pages</option>
+      </select>
+    </div>
+    <div class="mkt-grid" id="mkt-grid"><div class="empty">Loading…</div></div>
+  </section>
+
+  <!-- Analytics -->
+  <section class="section" id="view-analytics">
+    <h1>Analytics</h1>
+    <div class="flex gap-2 mb-4">
+      <select id="analytics-site-select" onchange="loadAnalytics()" style="width:240px;">
+        <option value="">Select a site…</option>
+      </select>
+      <select id="analytics-days" onchange="loadAnalytics()" style="width:120px;">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30">Last 30 days</option>
+      </select>
+    </div>
+    <div id="analytics-content" class="empty">Select a site to view analytics.</div>
+  </section>
+
+  <!-- Audit Log -->
+  <section class="section" id="view-audit">
+    <h1>Audit Log</h1>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>Action</th><th>Resource</th><th>IP</th></tr></thead>
+        <tbody id="audit-table-body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Modals ─────────────────────────────────────────────────────────────────── -->
+
+<!-- Register site modal -->
+<div class="modal-overlay" id="modal-register">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-register')">✕</button>
+    <h2>Register a site</h2>
+    <div class="form-group"><label>URL *</label><input type="url" id="reg-url" placeholder="https://example.com"></div>
+    <div class="form-group"><label>Name</label><input type="text" id="reg-name" placeholder="Example Corp"></div>
+    <div class="form-group"><label>Description</label><input type="text" id="reg-desc" placeholder="Short description"></div>
+    <div class="form-group"><label>Crawl depth</label><select id="reg-depth"><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option></select></div>
+    <div class="form-group"><label>Auth type</label><select id="reg-auth"><option value="none">None</option><option value="api_key">API Key</option><option value="basic_auth">Basic Auth</option></select></div>
+    <div style="text-align:right;margin-top:16px;" class="flex gap-2" style="justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-register')">Cancel</button>
+      <button class="btn btn-primary" onclick="registerSite()">Register & Crawl</button>
+    </div>
+  </div>
+</div>
+
+<!-- API Keys modal -->
+<div class="modal-overlay" id="modal-keys">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-keys')">✕</button>
+    <h2>API Keys</h2>
+    <div id="keys-list" style="margin-bottom:16px;"></div>
+    <div class="form-group"><label>Label</label><input type="text" id="new-key-label" placeholder="My agent"></div>
+    <button class="btn btn-primary btn-sm" onclick="createKey()">+ Create key</button>
+    <div id="new-key-result" style="margin-top:12px;display:none;">
+      <p class="text-muted" style="margin-bottom:6px;">Store this key — it won't be shown again:</p>
+      <div class="copy-box"><span id="new-key-value"></span><button class="btn btn-ghost btn-sm" onclick="copyText(document.getElementById('new-key-value').textContent)">Copy</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Webhooks modal -->
+<div class="modal-overlay" id="modal-webhooks">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-webhooks')">✕</button>
+    <h2>Webhooks</h2>
+    <div id="webhooks-list" style="margin-bottom:16px;"></div>
+    <div class="form-group"><label>Endpoint URL</label><input type="url" id="wh-url" placeholder="https://yourapp.com/webhook"></div>
+    <div class="form-group">
+      <label>Events</label>
+      <div class="flex gap-2" style="flex-wrap:wrap;margin-top:4px;">
+        <label style="display:inline-flex;gap:4px;color:var(--text);"><input type="checkbox" value="crawl.completed"> crawl.completed</label>
+        <label style="display:inline-flex;gap:4px;color:var(--text);"><input type="checkbox" value="crawl.failed"> crawl.failed</label>
+        <label style="display:inline-flex;gap:4px;color:var(--text);"><input type="checkbox" value="site.registered"> site.registered</label>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="createWebhook()">+ Add Webhook</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '';  // same origin
+let currentSlug = null;
+let allSites = [];
+let mktSearchTimer = null;
+
+// ── Navigation ──────────────────────────────────────────────────────────────────
+function showView(view) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('view-' + view)?.classList.add('active');
+  document.querySelector(`nav a[data-view="${view}"]`)?.classList.add('active');
+
+  if (view === 'overview') loadOverview();
+  if (view === 'marketplace') loadMarketplace();
+  if (view === 'analytics') loadAnalyticsSites();
+  if (view === 'audit') loadAudit();
+}
+
+document.querySelectorAll('nav a[data-view]').forEach(a => {
+  a.addEventListener('click', e => { e.preventDefault(); showView(a.dataset.view); });
+});
+
+// ── Toast ───────────────────────────────────────────────────────────────────────
+function toast(msg, ms = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+function copyText(text) { navigator.clipboard.writeText(text).then(() => toast('Copied!')); }
+
+// ── Modal ───────────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openRegisterModal() { openModal('modal-register'); }
+
+// ── API helper ──────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const apiKey = localStorage.getItem('webbridge_api_key') ?? '';
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...(apiKey ? { 'X-API-Key': apiKey } : {}) },
+    ...opts,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message ?? 'Request failed');
+  }
+  return res.json();
+}
+
+// ── Overview ────────────────────────────────────────────────────────────────────
+async function loadOverview() {
+  try {
+    const [sitesData, globalData] = await Promise.all([
+      api('/api/sites'),
+      api('/api/analytics/global').catch(() => null),
+    ]);
+    allSites = sitesData.sites;
+
+    document.getElementById('stat-sites').textContent = sitesData.total;
+    document.getElementById('stat-pages').textContent = allSites.reduce((s, x) => s + (x.pageCount || 0), 0);
+    if (globalData) {
+      document.getElementById('stat-requests').textContent = globalData.requests_7d?.total ?? '—';
+      const sr = globalData.requests_7d?.total > 0
+        ? Math.round(globalData.requests_7d.success / globalData.requests_7d.total * 100)
+        : 100;
+      document.getElementById('stat-success').textContent = sr + '%';
+    }
+
+    renderSitesTable(allSites);
+    renderAnalyticsSiteSelect(allSites);
+  } catch (e) { toast('Failed to load: ' + e.message); }
+}
+
+function renderSitesTable(sites) {
+  const tbody = document.getElementById('sites-table-body');
+  if (!sites.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No sites registered yet.</td></tr>'; return; }
+  tbody.innerHTML = sites.map(s => `
+    <tr onclick="openSiteDetail('${s.slug}')" style="cursor:pointer;">
+      <td><strong>${s.name}</strong><br><span class="text-muted">${s.url}</span></td>
+      <td><span class="badge ${s.status}">${s.status}</span></td>
+      <td>${s.pageCount ?? 0}</td>
+      <td>${s.entityCount ?? 0}</td>
+      <td>${s.lastCrawled ? new Date(s.lastCrawled).toLocaleDateString() : '—'}</td>
+      <td class="flex gap-2"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();copyText('${s.mcp_endpoint}')">Copy MCP</button></td>
+    </tr>`).join('');
+}
+
+// ── Site detail ─────────────────────────────────────────────────────────────────
+async function openSiteDetail(slug) {
+  currentSlug = slug;
+  showView('sites');
+
+  try {
+    const d = await api(`/api/sites/${slug}`);
+    document.getElementById('site-detail-title').textContent = d.site.name;
+    document.getElementById('site-detail-status').textContent = d.site.status;
+    document.getElementById('site-detail-status').className = `badge ${d.site.status}`;
+    document.getElementById('btn-copy-mcp').onclick = () => copyText(d.mcp_endpoint);
+    document.getElementById('btn-copy-agent').onclick = () => copyText(d.agent_json_url);
+
+    document.getElementById('site-stat-grid').innerHTML = `
+      <div class="stat-card"><div class="label">Pages</div><div class="value">${d.pageCount}</div></div>
+      <div class="stat-card"><div class="label">Entities</div><div class="value">${d.entityCount}</div></div>
+      <div class="stat-card"><div class="label">Actions</div><div class="value">${d.actionCount}</div></div>
+      <div class="stat-card"><div class="label">Last Crawled</div><div class="value" style="font-size:14px;">${d.site.lastCrawled ? new Date(d.site.lastCrawled).toLocaleString() : '—'}</div></div>`;
+
+    const tbody = document.getElementById('pages-table-body');
+    tbody.innerHTML = d.pages.length
+      ? d.pages.map(p => `<tr>
+          <td><a href="${p.url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.url.replace(/^https?:\/\//, '')}</a></td>
+          <td><span class="tag">${p.pageType}</span></td>
+          <td>${(p.summary||'').slice(0,80)}${p.summary?.length>80?'…':''}</td>
+          <td>${new Date(p.crawledAt).toLocaleString()}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty">No pages yet — run a crawl.</td></tr>';
+
+    document.getElementById('entity-types').innerHTML = d.entityTypes.length
+      ? d.entityTypes.map(t => `<span class="tag">${t}</span>`).join('')
+      : '<span class="text-muted">No entities detected.</span>';
+
+    if (d.site.recrawlIntervalHours) {
+      document.getElementById('recrawl-select').value = String(d.site.recrawlIntervalHours);
+    }
+  } catch (e) { toast('Failed to load site: ' + e.message); }
+}
+
+async function triggerRecrawl() {
+  if (!currentSlug) return;
+  try {
+    await api(`/api/sites/${currentSlug}/recrawl`, { method: 'POST' });
+    toast('Re-crawl enqueued!');
+    setTimeout(() => openSiteDetail(currentSlug), 500);
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function saveRecrawl() {
+  if (!currentSlug) return;
+  const val = document.getElementById('recrawl-select').value;
+  await api(`/api/sites/${currentSlug}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ recrawlIntervalHours: val ? parseInt(val) : null }),
+  }).catch(e => toast('Failed: ' + e.message));
+  toast('Re-crawl schedule saved.');
+}
+
+async function deleteSite() {
+  if (!currentSlug || !confirm(`Delete site "${currentSlug}"? This cannot be undone.`)) return;
+  await api(`/api/sites/${currentSlug}`, { method: 'DELETE' }).catch(e => toast(e.message));
+  toast(`Site "${currentSlug}" deleted.`);
+  currentSlug = null;
+  showView('overview');
+}
+
+// ── Register ────────────────────────────────────────────────────────────────────
+async function registerSite() {
+  const url = document.getElementById('reg-url').value.trim();
+  const name = document.getElementById('reg-name').value.trim();
+  const description = document.getElementById('reg-desc').value.trim();
+  const crawlDepth = parseInt(document.getElementById('reg-depth').value);
+  const authType = document.getElementById('reg-auth').value;
+
+  if (!url) { toast('URL is required'); return; }
+
+  try {
+    const res = await api('/api/sites', {
+      method: 'POST',
+      body: JSON.stringify({ url, name, description, crawlDepth, authType }),
+    });
+    closeModal('modal-register');
+    toast(`✓ Site "${res.site.slug}" registered — crawling…`);
+    loadOverview();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+// ── API Keys ────────────────────────────────────────────────────────────────────
+async function showApiKeys() {
+  if (!currentSlug) return;
+  document.getElementById('new-key-result').style.display = 'none';
+  await loadKeys();
+  openModal('modal-keys');
+}
+
+async function loadKeys() {
+  const res = await api(`/api/sites/${currentSlug}/keys`).catch(() => ({ keys: [] }));
+  document.getElementById('keys-list').innerHTML = res.keys.length
+    ? res.keys.map(k => `
+        <div class="flex gap-2" style="align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+          <span style="flex:1;">${k.label} <span class="badge ${k.isActive ? 'ready' : 'failed'}">${k.isActive ? 'active' : 'revoked'}</span></span>
+          <span class="text-muted" style="font-size:11px;">${k.lastUsed ? 'Last used ' + new Date(k.lastUsed).toLocaleDateString() : 'Never used'}</span>
+          ${k.isActive ? `<button class="btn btn-danger btn-sm" onclick="revokeKey('${k.id}')">Revoke</button>` : ''}
+        </div>`).join('')
+    : '<p class="text-muted">No keys yet.</p>';
+}
+
+async function createKey() {
+  const label = document.getElementById('new-key-label').value.trim() || 'Unnamed key';
+  try {
+    const res = await api(`/api/sites/${currentSlug}/keys`, { method: 'POST', body: JSON.stringify({ label }) });
+    document.getElementById('new-key-value').textContent = res.key;
+    document.getElementById('new-key-result').style.display = 'block';
+    await loadKeys();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function revokeKey(keyId) {
+  if (!confirm('Revoke this key?')) return;
+  await api(`/api/sites/${currentSlug}/keys/${keyId}`, { method: 'DELETE' }).catch(e => toast(e.message));
+  await loadKeys();
+  toast('Key revoked.');
+}
+
+// ── Webhooks ────────────────────────────────────────────────────────────────────
+async function showWebhooks() {
+  if (!currentSlug) return;
+  await loadWebhooks();
+  openModal('modal-webhooks');
+}
+
+async function loadWebhooks() {
+  const res = await api(`/api/sites/${currentSlug}/webhooks`).catch(() => ({ webhooks: [] }));
+  document.getElementById('webhooks-list').innerHTML = res.webhooks.length
+    ? res.webhooks.map(w => `
+        <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+          <div class="flex gap-2" style="align-items:center;">
+            <span style="flex:1;font-size:13px;">${w.url}</span>
+            <button class="btn btn-danger btn-sm" onclick="deleteWebhook('${w.id}')">Remove</button>
+          </div>
+          <div style="margin-top:4px;">${w.events.map(e => `<span class="tag">${e}</span>`).join(' ')}</div>
+        </div>`).join('')
+    : '<p class="text-muted">No webhooks configured.</p>';
+}
+
+async function createWebhook() {
+  const url = document.getElementById('wh-url').value.trim();
+  const events = [...document.querySelectorAll('#modal-webhooks input[type=checkbox]:checked')].map(el => el.value);
+  if (!url) { toast('URL required'); return; }
+  if (!events.length) { toast('Select at least one event'); return; }
+  await api(`/api/sites/${currentSlug}/webhooks`, { method: 'POST', body: JSON.stringify({ url, events }) })
+    .catch(e => toast(e.message));
+  document.getElementById('wh-url').value = '';
+  await loadWebhooks();
+  toast('Webhook added.');
+}
+
+async function deleteWebhook(id) {
+  await api(`/api/sites/${currentSlug}/webhooks/${id}`, { method: 'DELETE' }).catch(e => toast(e.message));
+  await loadWebhooks();
+}
+
+// ── Marketplace ─────────────────────────────────────────────────────────────────
+async function loadMarketplace(q = '') {
+  const sort = document.getElementById('mkt-sort')?.value ?? 'stars';
+  const res = await api(`/marketplace?q=${encodeURIComponent(q)}&sort=${sort}`).catch(() => ({ sites: [] }));
+  const grid = document.getElementById('mkt-grid');
+  if (!res.sites.length) { grid.innerHTML = '<div class="empty">No sites found.</div>'; return; }
+  grid.innerHTML = res.sites.map(s => `
+    <div class="mkt-card">
+      <h3>${s.name}</h3>
+      <p>${s.description || s.url}</p>
+      <div class="mkt-meta">
+        <span>⭐ ${s.starCount}</span>
+        <span>📄 ${s.pageCount} pages</span>
+        <span>🔷 ${s.entityCount} entities</span>
+      </div>
+      <div class="flex gap-2" style="margin-top:4px;">
+        <button class="btn btn-ghost btn-sm" onclick="copyText('${s.agent_json_url}')">Copy agent.json</button>
+        <button class="btn btn-ghost btn-sm" onclick="starSite('${s.slug}', this)">★ Star</button>
+      </div>
+    </div>`).join('');
+}
+
+function searchMarketplace(q) {
+  clearTimeout(mktSearchTimer);
+  mktSearchTimer = setTimeout(() => loadMarketplace(q), 300);
+}
+
+async function starSite(slug, btn) {
+  const res = await api(`/marketplace/${slug}/star`, { method: 'POST' }).catch(() => null);
+  if (res) { btn.textContent = `★ ${res.starCount}`; toast('Starred!'); }
+}
+
+// ── Analytics ───────────────────────────────────────────────────────────────────
+function renderAnalyticsSiteSelect(sites) {
+  const sel = document.getElementById('analytics-site-select');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Select a site…</option>' +
+    sites.map(s => `<option value="${s.slug}">${s.name}</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+async function loadAnalyticsSites() {
+  if (!allSites.length) {
+    const d = await api('/api/sites').catch(() => ({ sites: [] }));
+    allSites = d.sites;
+    renderAnalyticsSiteSelect(allSites);
+  }
+}
+
+async function loadAnalytics() {
+  const slug = document.getElementById('analytics-site-select').value;
+  const days = document.getElementById('analytics-days').value;
+  if (!slug) return;
+
+  try {
+    const d = await api(`/api/sites/${slug}/analytics?days=${days}`);
+    const { summary, top_tools, timeline } = d;
+
+    document.getElementById('analytics-content').innerHTML = `
+      <div class="stat-grid" style="margin-bottom:24px;">
+        <div class="stat-card"><div class="label">Total Requests</div><div class="value">${summary.totalRequests}</div></div>
+        <div class="stat-card"><div class="label">Success Rate</div><div class="value green">${summary.successRate}%</div></div>
+        <div class="stat-card"><div class="label">Avg Duration</div><div class="value">${summary.avgDurationMs}ms</div></div>
+        <div class="stat-card"><div class="label">Errors</div><div class="value ${summary.errorCount>0?'':'green'}">${summary.errorCount}</div></div>
+      </div>
+      <h2>Top Tools</h2>
+      <div class="table-wrap mb-6">
+        <table><thead><tr><th>Tool</th><th>Calls</th><th>% of total</th></tr></thead>
+        <tbody>${top_tools.length
+          ? top_tools.map(t => `<tr><td><code>${t.toolName}</code></td><td>${t.callCount}</td><td>${summary.totalRequests ? Math.round(t.callCount/summary.totalRequests*100) : 0}%</td></tr>`).join('')
+          : '<tr><td colspan="3" class="empty">No calls yet.</td></tr>'}
+        </tbody></table>
+      </div>
+      <h2>Daily requests (${days}d)</h2>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:80px;">
+        ${timeline.length
+          ? timeline.map(t => {
+              const max = Math.max(...timeline.map(x => x.requests), 1);
+              const h = Math.round((t.requests / max) * 72);
+              return `<div title="${t.date}: ${t.requests} requests" style="flex:1;background:var(--accent);opacity:.8;height:${h}px;border-radius:3px 3px 0 0;min-width:8px;"></div>`;
+            }).join('')
+          : '<span class="text-muted">No data</span>'}
+      </div>`;
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+// ── Audit ───────────────────────────────────────────────────────────────────────
+async function loadAudit() {
+  try {
+    const d = await api('/api/audit?limit=50');
+    const tbody = document.getElementById('audit-table-body');
+    tbody.innerHTML = d.logs.length
+      ? d.logs.map(l => `<tr>
+          <td>${new Date(l.createdAt).toLocaleString()}</td>
+          <td><code>${l.action}</code></td>
+          <td>${l.resourceType}${l.resourceId ? ' · ' + l.resourceId.slice(0,8) : ''}</td>
+          <td>${l.ipAddress || '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty">No audit events yet.</td></tr>';
+  } catch (e) {
+    document.getElementById('audit-table-body').innerHTML = '<tr><td colspan="4" class="empty">Load failed.</td></tr>';
+  }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────────
+loadOverview();
+</script>
+</body>
+</html>
