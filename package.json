@@ -44,5 +44,12 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0"
-  }
+  },
+  "bin": {
+    "webbridge": "bin/webbridge.cjs"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ]
 }
